@@ -7,5 +7,6 @@ export interface Producto {
   imagen?: string | null;
   marca: string;
   tipo: string;
+  promocion?: boolean;
   categoria?: number | { nombre?: string };
 }

@@ -3,9 +3,20 @@
   <app-hero [productCount]="products().length"></app-hero>
 
   <main class="hub-grid">
-    <app-filters></app-filters>
+    <app-filters
+      [brands]="brands()"
+      [types]="types()"
+      [minPrice]="priceRangeMin"
+      [maxPrice]="priceRangeMax"
+      [selectedBrand]="brandFilter()"
+      [selectedType]="typeFilter()"
+      [selectedMinPrice]="priceMinFilter()"
+      [selectedMaxPrice]="priceMaxFilter()"
+      [promotionsOnly]="promotionsOnly()"
+      (filtersChange)="onFiltersChange($event)"
+    ></app-filters>
     <app-products
-      [products]="products()"
+      [products]="filteredProducts()"
       [loading]="loading()"
       [apiBase]="apiBase"
       [defaultImage]="defaultImage"
