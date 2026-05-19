@@ -1,0 +1,14 @@
+<div class="page-shell">
+  <app-header></app-header>
+  <app-hero [productCount]="products().length"></app-hero>
+
+  <main class="hub-grid">
+    <app-filters></app-filters>
+    <app-products
+      [products]="products()"
+      [loading]="loading()"
+      [apiBase]="apiBase"
+      [defaultImage]="defaultImage"
+    ></app-products>
+  </main>
+</div>

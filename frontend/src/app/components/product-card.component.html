@@ -1,0 +1,19 @@
+<article class="product-card">
+  <div class="product-image">
+    <img [src]="imageUrl" [alt]="product.nombre" />
+  </div>
+  <div class="product-body">
+    <div class="product-top">
+      <span class="product-badge">{{ product.tipo || 'Celular' }}</span>
+      <span class="product-stock">
+        {{ product.stock > 0 ? 'En stock' : 'Agotado' }}
+      </span>
+    </div>
+    <h3>{{ product.nombre }}</h3>
+    <p>{{ product.marca }}</p>
+    <div class="card-footer">
+      <span class="price">{{ product.precio | number:'1.0-0' }}</span>
+      <button class="buy-btn">Ver producto</button>
+    </div>
+  </div>
+</article>
