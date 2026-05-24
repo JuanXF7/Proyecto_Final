@@ -700,8 +700,9 @@ button.avatar-container,
 }
 
 .compra-producto-imagen img {
-  width: 64px;
-  height: 64px;
+  width: 10rem;
+  height: 10rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
   object-fit: cover;
   border-radius: 8px;
   background: #f1f5f9;
