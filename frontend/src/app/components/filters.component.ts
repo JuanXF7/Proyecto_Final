@@ -78,6 +78,10 @@ export interface ProductFilters {
           </div>
           <span>{{ selectedMaxPrice | number:'1.0-0' }}</span>
         </label>
+
+        <button type="button" class="clear-filters" (click)="resetFilters()">
+          Limpiar filtros
+        </button>
       </div>
 
       <div class="filter-group filter-checkbox">
@@ -105,6 +109,16 @@ export class FiltersComponent {
   @Input() promotionsOnly = false;
 
   @Output() filtersChange = new EventEmitter<ProductFilters>();
+
+  protected resetFilters() {
+    this.filtersChange.emit({
+      brand: '',
+      type: '',
+      minPrice: this.minPrice,
+      maxPrice: this.maxPrice,
+      promotionsOnly: false
+    });
+  }
 
   protected onFilterChange(field: keyof ProductFilters, value: string | number | boolean) {
     const filters: ProductFilters = {

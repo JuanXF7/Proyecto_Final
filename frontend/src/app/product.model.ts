@@ -9,4 +9,5 @@ export interface Producto {
   tipo: string;
   promocion?: boolean;
   categoria?: number | { nombre?: string };
+  proveedor?: number | { nombre?: string };
 }

@@ -53,13 +53,17 @@ class Producto(models.Model):
 
 class PerfilUsuario(models.Model):
     usuario = models.OneToOneField(User, on_delete=models.CASCADE)
+    email = models.EmailField(blank=True, default='')
+    nombre = models.CharField(max_length=150, blank=True)
+    nickname = models.CharField(max_length=100, blank=True)
     telefono = models.CharField(max_length=20)
     direccion = models.CharField(max_length=255)
     ciudad = models.CharField(max_length=100)
     imagen = models.ImageField(upload_to='usuarios/', blank=True, null=True)
 
     def __str__(self):
-        return self.usuario.username
+        display_name = self.nickname or self.nombre or self.usuario.username
+        return f'{display_name} ({self.usuario.username})'
 
 
 class Pedido(models.Model):

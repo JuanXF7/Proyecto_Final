@@ -1,13 +1,279 @@
 <div class="page-shell">
-  <app-header></app-header>
-  <app-hero [productCount]="products().length"></app-hero>
+  <app-header
+    [loggedIn]="isLoggedIn()"
+    [userAvatar]="currentUserAvatar()"
+    [username]="currentUserName()"
+    (login)="openLoginModal()"
+    (logout)="handleLogout()"
+    (account)="goToDashboard()"
+  ></app-header>
 
-  <main class="hub-grid">
+  <section class="dashboard-page" *ngIf="isDashboardActive()">
+    <div class="dashboard-header">
+      <div>
+        <p class="eyebrow">Panel de usuario</p>
+        <h1>Bienvenido, {{ currentUserName() }}</h1>
+        <p>Desde aquí puedes ver tus compras, deseos, carrito y actualizar tus datos.</p>
+      </div>
+      <div class="dashboard-cta">
+        <button class="btn-secondary" type="button" (click)="returnToHome()">Volver a la tienda</button>
+        <button class="btn-primary" type="button" (click)="handleLogout()">Cerrar sesión</button>
+      </div>
+    </div>
+
+    <nav class="dashboard-nav">
+      <button type="button" [class.active]="dashboardTab() === 'compras'" (click)="goToDashboard('compras')">Mis compras</button>
+      <button type="button" [class.active]="dashboardTab() === 'deseos'" (click)="goToDashboard('deseos')">Mi lista de deseos</button>
+      <button type="button" [class.active]="dashboardTab() === 'carrito'" (click)="goToDashboard('carrito')">Mi carrito</button>
+      <button type="button" [class.active]="dashboardTab() === 'cuenta'" (click)="goToDashboard('cuenta')">Modificar datos de la cuenta</button>
+    </nav>
+
+    <div class="dashboard-content">
+      <div *ngIf="dashboardTab() === 'compras'">
+        <h2>Mis compras</h2>
+        <p>Aquí aparecerán los pedidos que hayas realizado.</p>
+        <div class="dashboard-panel">Aún no has realizado ninguna compra.</div>
+      </div>
+
+      <div *ngIf="dashboardTab() === 'deseos'">
+        <h2>Mi lista de deseos</h2>
+        <p>Guarda los productos que te interesan para comprarlos más tarde.</p>
+        <div class="dashboard-panel">No hay productos en tu lista de deseos todavía.</div>
+      </div>
+
+      <div *ngIf="dashboardTab() === 'carrito'">
+        <h2>Mi carrito</h2>
+        <p>Revisa los artículos que añadiste antes de finalizar tu compra.</p>
+        <div class="dashboard-panel">Tu carrito está vacío.</div>
+      </div>
+
+      <div *ngIf="dashboardTab() === 'cuenta'">
+        <h2>Modificar datos de la cuenta</h2>
+        <p>Actualiza tu información personal, de contacto y tu foto de perfil.</p>
+
+        <form class="dashboard-panel profile-form" (submit)="handleProfileUpdate($event)">
+          <div class="profile-avatar-row">
+            <div class="avatar-preview">
+              <img *ngIf="profileAvatarPreview() || profileAvatarUrl()" [src]="profileAvatarPreview() || profileAvatarUrl()" alt="Avatar" />
+              <span *ngIf="!profileAvatarPreview() && !profileAvatarUrl()" class="avatar-placeholder">👤</span>
+            </div>
+            <label class="file-picker">
+              <span>Seleccionar foto de perfil</span>
+              <input type="file" accept="image/*" (change)="handleProfileImageChange($event)" />
+            </label>
+          </div>
+
+          <div class="register-grid profile-edit-grid">
+            <div class="form-group">
+              <label>Correo</label>
+              <input
+                type="email"
+                [value]="profileEmail()"
+                (input)="profileEmail.set($any($event.target).value)"
+                required
+              />
+            </div>
+            <div class="form-group">
+              <label>Nombre completo</label>
+              <input
+                type="text"
+                [value]="profileName()"
+                (input)="profileName.set($any($event.target).value)"
+              />
+            </div>
+            <div class="form-group">
+              <label>Nickname</label>
+              <input
+                type="text"
+                [value]="profileNickname()"
+                (input)="profileNickname.set($any($event.target).value)"
+              />
+            </div>
+            <div class="form-group">
+              <label>Teléfono</label>
+              <input
+                type="tel"
+                [value]="profilePhone()"
+                (input)="profilePhone.set($any($event.target).value)"
+              />
+            </div>
+            <div class="form-group">
+              <label>Ciudad</label>
+              <input
+                type="text"
+                [value]="profileCity()"
+                (input)="profileCity.set($any($event.target).value)"
+              />
+            </div>
+            <div class="form-group">
+              <label>Dirección</label>
+              <input
+                type="text"
+                [value]="profileAddress()"
+                (input)="profileAddress.set($any($event.target).value)"
+              />
+            </div>
+          </div>
+
+          <p class="auth-message">{{ profileUpdateMessage() }}</p>
+          <button class="btn-primary btn-block" type="submit" [disabled]="profileSaving()">
+            {{ profileSaving() ? 'Guardando...' : 'Guardar cambios' }}
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <app-hero *ngIf="!isDashboardActive()" [productCount]="products().length"></app-hero>
+
+  <div class="login-backdrop" *ngIf="showLogin()">
+    <div class="login-panel">
+      <button class="modal-close" type="button" (click)="closeLogin()">✕</button>
+      <div class="login-header">
+        <div>
+          <h2>{{ loginMode() === 'login' ? 'Iniciar sesión' : 'Crear cuenta' }}</h2>
+          <p class="login-subtitle">
+            {{ loginMode() === 'login'
+              ? 'Ingresa tus datos para continuar con tu compra.'
+              : 'Regístrate para poder agregar productos al carrito.' }}
+          </p>
+        </div>
+      </div>
+
+      <div class="login-tabs">
+        <button
+          type="button"
+          [class.active]="loginMode() === 'login'"
+          (click)="setLoginMode('login')"
+        >
+          Iniciar sesión
+        </button>
+        <button
+          type="button"
+          [class.active]="loginMode() === 'register'"
+          (click)="setLoginMode('register')"
+        >
+          Registrarse
+        </button>
+      </div>
+
+      <form class="login-form" (submit)="handleAuthSubmit($event)">
+        <div *ngIf="loginMode() === 'register'" class="register-grid">
+          <div class="form-group">
+            <label>Nombre completo</label>
+            <input
+              type="text"
+              [value]="registerName()"
+              (input)="registerName.set($any($event.target).value)"
+              placeholder="Tu nombre"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <label>Nombre de usuario</label>
+            <input
+              type="text"
+              [value]="registerUsername()"
+              (input)="registerUsername.set($any($event.target).value)"
+              placeholder="Nombre de usuario"
+            />
+          </div>
+          <div class="form-group">
+            <label>Nickname</label>
+            <input
+              type="text"
+              [value]="registerNickname()"
+              (input)="registerNickname.set($any($event.target).value)"
+              placeholder="Tu nickname"
+            />
+          </div>
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input
+              type="tel"
+              [value]="registerPhone()"
+              (input)="registerPhone.set($any($event.target).value)"
+              placeholder="300 123 4567"
+            />
+          </div>
+          <div class="form-group">
+            <label>Ciudad</label>
+            <input
+              type="text"
+              [value]="registerCity()"
+              (input)="registerCity.set($any($event.target).value)"
+              placeholder="Bogotá"
+            />
+          </div>
+          <div class="form-group">
+            <label>Dirección</label>
+            <input
+              type="text"
+              [value]="registerAddress()"
+              (input)="registerAddress.set($any($event.target).value)"
+              placeholder="Calle 123 #45-67"
+            />
+          </div>
+        </div>
+
+        <div class="form-group full-width">
+          <label>Correo electrónico</label>
+          <input
+            type="email"
+            [value]="loginMode() === 'login' ? loginEmail() : registerEmail()"
+            (input)="
+              loginMode() === 'login'
+                ? loginEmail.set($any($event.target).value)
+                : registerEmail.set($any($event.target).value)
+            "
+            placeholder="nombre@correo.com"
+            required
+          />
+        </div>
+
+        <div class="form-group full-width">
+          <label>Contraseña</label>
+          <input
+            type="password"
+            minlength="8"
+            [value]="loginMode() === 'login' ? loginPassword() : registerPassword()"
+            (input)="
+              loginMode() === 'login'
+                ? loginPassword.set($any($event.target).value)
+                : registerPassword.set($any($event.target).value)
+            "
+            placeholder="Contraseña"
+            required
+          />
+          <small *ngIf="loginMode() === 'register'" class="hint">Mínimo 8 caracteres</small>
+        </div>
+        <div *ngIf="loginMode() === 'register'" class="form-group full-width">
+          <label>Confirmar contraseña</label>
+          <input
+            type="password"
+            minlength="8"
+            [value]="registerConfirmPassword()"
+            (input)="registerConfirmPassword.set($any($event.target).value)"
+            placeholder="Repite tu contraseña"
+            required
+          />
+        </div>
+
+        <p class="auth-message">{{ authMessage() }}</p>
+
+        <button class="btn-primary btn-block" type="submit">
+          {{ loginMode() === 'login' ? 'Ingresar' : 'Crear cuenta' }}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <main class="hub-grid" *ngIf="!isDashboardActive()">
     <app-filters
       [brands]="brands()"
       [types]="types()"
       [minPrice]="priceRangeMin"
-      [maxPrice]="priceRangeMax"
+      [maxPrice]="priceRangeMax()"
       [selectedBrand]="brandFilter()"
       [selectedType]="typeFilter()"
       [selectedMinPrice]="priceMinFilter()"
@@ -16,10 +282,52 @@
       (filtersChange)="onFiltersChange($event)"
     ></app-filters>
     <app-products
-      [products]="filteredProducts()"
+      [products]="pagedProducts()"
       [loading]="loading()"
       [apiBase]="apiBase"
       [defaultImage]="defaultImage"
+      [currentPage]="currentPage()"
+      [totalPages]="totalPages()"
+      [totalProducts]="filteredProducts().length"
+      (pageChange)="onPageChange($event)"
+      (viewProduct)="openProductModal($event)"
     ></app-products>
   </main>
+
+  <div class="modal-backdrop" *ngIf="showModal()">
+    <div class="modal">
+      <ng-container *ngIf="selectedProduct() as product">
+        <div class="modal-content">
+          <div class="modal-image">
+            <img
+              [src]="getProductImage(product)"
+              [alt]="product.nombre"
+            />
+          </div>
+
+          <div class="modal-details">
+            <span class="product-badge">{{ product.tipo || 'Celular' }}</span>
+            <h2>{{ product.nombre }}</h2>
+            <p class="modal-subtitle">{{ product.marca }}</p>
+            <p class="modal-description">{{ product.descripcion }}</p>
+
+            <div class="modal-meta">
+              <span>Precio: {{ product.precio | number:'1.0-0' }}</span>
+              <span>Stock: {{ product.stock }}</span>
+              <span>Proveedor: {{ getProveedorName(product) }}</span>
+            </div>
+
+            <div class="modal-actions">
+              <button class="btn-primary" type="button" (click)="addToCart(product)">
+                🛒 Agregar al carrito
+              </button>
+              <button class="modal-secondary" type="button" (click)="closeModal()">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </div>
 </div>

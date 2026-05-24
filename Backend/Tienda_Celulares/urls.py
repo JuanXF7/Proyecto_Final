@@ -12,5 +12,7 @@ router.register(r'usuarios', PerfilUsuarioViewSet)
 router.register(r'pedidos', PedidoViewSet)
 
 urlpatterns = [
+    path('login/', LoginUserView.as_view(), name='login'),
+    path('register/', RegisterUserView.as_view(), name='register'),
     path('', include(router.urls)),
 ]
