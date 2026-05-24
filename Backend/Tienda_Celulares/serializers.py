@@ -22,9 +22,26 @@ class LugarVentaSerializer(serializers.ModelSerializer):
 
 
 class ProductoSerializer(serializers.ModelSerializer):
+    average_rating = serializers.SerializerMethodField(read_only=True)
+    reviews = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Producto
         fields = '__all__'
+
+    def get_average_rating(self, obj):
+        reviews = getattr(obj, 'reviews', None)
+        if reviews is None:
+            reviews = obj.reviews.all()
+        count = reviews.count()
+        if count == 0:
+            return None
+        total = sum([r.rating for r in reviews])
+        return round(total / count, 2)
+
+    def get_reviews(self, obj):
+        reviews = obj.reviews.all().order_by('-fecha')[:10]
+        return ReviewSerializer(reviews, many=True).data
 
 
 class PerfilUsuarioSerializer(serializers.ModelSerializer):
@@ -93,18 +110,48 @@ class UserRegistrationSerializer(serializers.Serializer):
             ciudad=ciudad,
             imagen=imagen,
         )
+        # Crear lista de deseos para el usuario
+        ListaDeseos.objects.create(usuario=user)
         return user
 
 
+class ReviewSerializer(serializers.ModelSerializer):
+    usuario = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Review
+        fields = ['id', 'usuario', 'rating', 'comentario', 'fecha']
+        read_only_fields = ['usuario', 'fecha']
+
+
 class DetallePedidoSerializer(serializers.ModelSerializer):
+    producto = ProductoSerializer(read_only=True)
+
     class Meta:
         model = DetallePedido
         fields = '__all__'
 
 
 class PedidoSerializer(serializers.ModelSerializer):
+    usuario = serializers.PrimaryKeyRelatedField(read_only=True)
     detalles = DetallePedidoSerializer(many=True, read_only=True)
 
     class Meta:
         model = Pedido
         fields = '__all__'
+        read_only_fields = ['usuario']
+
+
+class ListaDeseosSerializer(serializers.ModelSerializer):
+    productos = ProductoSerializer(many=True, read_only=True)
+    productos_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Producto.objects.all(),
+        write_only=True,
+        many=True,
+        source='productos'
+    )
+
+    class Meta:
+        model = ListaDeseos
+        fields = ['id', 'usuario', 'productos', 'productos_ids', 'fecha_creacion']
+        read_only_fields = ['usuario', 'fecha_creacion']

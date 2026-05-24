@@ -62,7 +62,7 @@ export class HeroComponent implements OnInit, OnDestroy {
       image: 'assets/Carrusel1.png',
       alt: 'Componentes de computadores',
       title: 'Componentes de computadoras',
-      description: 'Encuentra las mejores piezas para armar tu PC, aqui encontrara de todo.',
+      description: 'Encuentra las mejores piezas para armar tu PC, aqui encontrara de todo para que armes la maquina de tus sueños.',
       features: [
         {
           icon: '💻',

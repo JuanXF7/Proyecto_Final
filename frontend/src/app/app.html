@@ -32,13 +32,76 @@
       <div *ngIf="dashboardTab() === 'compras'">
         <h2>Mis compras</h2>
         <p>Aquí aparecerán los pedidos que hayas realizado.</p>
-        <div class="dashboard-panel">Aún no has realizado ninguna compra.</div>
+        <div *ngIf="loadingCompras()" class="dashboard-panel">Cargando compras...</div>
+        <div *ngIf="!loadingCompras() && compras().length === 0" class="dashboard-panel">No hay compras.</div>
+        <div *ngIf="!loadingCompras() && compras().length > 0" class="compras-list">
+          <div *ngFor="let pedido of compras()" class="compra-item">
+            <div class="compra-header">
+              <span class="compra-id">Pedido #{{ pedido.id }}</span>
+              <span class="compra-fecha">{{ pedido.fecha | date:'short' }}</span>
+              <span [class]="'compra-estado estado-' + pedido.estado.toLowerCase()">{{ pedido.estado }}</span>
+            </div>
+            <div class="compra-productos">
+              <div *ngFor="let detalle of pedido.detalles" class="compra-producto">
+                <div class="compra-producto-imagen">
+                  <img [src]="getProductImage(detalle.producto)" [alt]="detalle.producto.nombre" />
+                </div>
+                <div class="compra-producto-info">
+                  <span class="compra-producto-nombre">{{ detalle.producto.nombre }}</span>
+                  <span class="cantidad">x{{ detalle.cantidad }}</span>
+                </div>
+                <div class="compra-producto-precio">
+                  <span class="precio">{{ formatCurrency(detalle.precio) }}</span>
+                </div>
+                <div class="compra-producto-actions">
+                  <button class="btn-primary" type="button" (click)="repurchase(detalle.producto.id)">Comprar otra vez</button>
+                  <div class="repurchase-msg" *ngIf="repurchaseMessage()[detalle.producto.id]">{{ repurchaseMessage()[detalle.producto.id] }}</div>
+                </div>
+                <div class="compra-producto-review">
+                  <label>Valora este producto:</label>
+                  <div class="stars">
+                    <button *ngFor="let s of [1,2,3,4,5]" type="button" class="star-btn" [class.active]="(reviewRating()[detalle.producto.id] || 0) >= s" (click)="setReviewRating(detalle.producto.id, s)">★</button>
+                  </div>
+                  <textarea [value]="reviewComment()[detalle.producto.id] || ''" (input)="setReviewComment(detalle.producto.id, $any($event.target).value)" placeholder="Deja un comentario (opcional)"></textarea>
+                  <button class="btn-secondary" type="button" (click)="submitReview(detalle.producto.id)" [disabled]="(reviewSubmitting()[detalle.producto.id] || false)">Enviar valoración</button>
+                </div>
+              </div>
+            </div>
+            <div class="compra-total">
+              <strong>Total: {{ formatCurrency(pedido.total) }}</strong>
+              <p *ngIf="pedido.entrega_estimada">Entrega estimada: {{ pedido.entrega_estimada | date:'longDate' }}</p>
+              <p *ngIf="pedido.estado !== 'ENTREGADO' && pedido.entrega_estimada">Tiempo aproximado: {{ getRemainingTime(pedido.entrega_estimada) }}</p>
+            </div>
+            <button *ngIf="pedido.estado !== 'ENTREGADO'" class="btn-primary" type="button" (click)="marcarPedidoRecibido(pedido.id)">Pedido recibido</button>
+          </div>
+        </div>
       </div>
 
       <div *ngIf="dashboardTab() === 'deseos'">
         <h2>Mi lista de deseos</h2>
         <p>Guarda los productos que te interesan para comprarlos más tarde.</p>
-        <div class="dashboard-panel">No hay productos en tu lista de deseos todavía.</div>
+        <div *ngIf="loadingDeseos()" class="dashboard-panel">Cargando lista de deseos...</div>
+        <div *ngIf="!loadingDeseos() && listaDeseos().length === 0" class="dashboard-panel">No hay ningún producto agregado a la lista de deseos.</div>
+        <div *ngIf="!loadingDeseos() && listaDeseos().length > 0" class="productos-grid">
+          <div *ngFor="let producto of listaDeseos()" class="deseo-producto">
+            <div class="producto-imagen">
+              <img [src]="getProductImage(producto)" [alt]="producto.nombre" />
+            </div>
+            <div class="producto-info">
+              <h4>{{ producto.nombre }}</h4>
+              <p class="marca">{{ producto.marca }}</p>
+              <p class="precio">${{ producto.precio | number:'1.0-0' }}</p>
+              <div class="producto-acciones">
+                <button class="btn-primary" type="button" (click)="addToCart(producto)">
+                  🛒 Agregar al carrito
+                </button>
+                <button class="btn-secondary" type="button" (click)="removerDeListaDeseos(producto.id)">
+                  ❌ Remover
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div *ngIf="dashboardTab() === 'carrito'">
@@ -318,13 +381,63 @@
             </div>
 
             <div class="modal-actions">
+              <button class="btn-primary" type="button" (click)="startPurchase(product)">
+                Comprar
+              </button>
               <button class="btn-primary" type="button" (click)="addToCart(product)">
                 🛒 Agregar al carrito
+              </button>
+              <button 
+                class="btn-secondary" 
+                type="button" 
+                (click)="productoEnListaDeseos()[product.id] ? removerDeListaDeseos(product.id) : agregarAListaDeseos(product)"
+                [class.wishlist-active]="productoEnListaDeseos()[product.id]"
+              >
+                {{ productoEnListaDeseos()[product.id] ? '❤️ Remover de deseos' : '🤍 Agregar a deseos' }}
               </button>
               <button class="modal-secondary" type="button" (click)="closeModal()">
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="showPurchaseModal()">
+    <div class="modal">
+      <ng-container *ngIf="selectedProduct() as product">
+        <div class="modal-content">
+          <div class="modal-image">
+            <img [src]="getProductImage(product)" [alt]="product.nombre" />
+          </div>
+
+          <div class="modal-details">
+            <span class="product-badge">Comprar</span>
+            <h2>{{ product.nombre }}</h2>
+            <p class="modal-subtitle">{{ product.marca }}</p>
+            <p class="modal-description">{{ product.descripcion }}</p>
+
+            <div class="purchase-meta">
+              <p>Precio unitario: {{ formatCurrency(parsePrice(product.precio)) }}</p>
+              <p>Stock disponible: {{ product.stock }}</p>
+              <label>
+                Cantidad:
+                <input type="number" min="1" [value]="purchaseQuantity()" (input)="changePurchaseQuantity($any($event.target).value)" />
+              </label>
+              <p>Total a pagar: {{ formatCurrency(getPurchaseTotal()) }}</p>
+              <p>Entrega estimada: {{ purchaseEstimatedDate() }}</p>
+            </div>
+
+            <div class="modal-actions">
+              <button class="btn-primary" type="button" (click)="submitPurchase($event)" [disabled]="purchaseLoading()">
+                {{ purchaseLoading() ? 'Procesando...' : 'Confirmar compra' }}
+              </button>
+              <button class="modal-secondary" type="button" (click)="cancelPurchase()">Cancelar</button>
+            </div>
+
+            <p class="auth-message">{{ purchaseMessage() }}</p>
           </div>
         </div>
       </ng-container>

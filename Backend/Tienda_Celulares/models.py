@@ -77,6 +77,7 @@ class Pedido(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
     fecha = models.DateTimeField(auto_now_add=True)
     estado = models.CharField(max_length=20, choices=ESTADOS, default='PENDIENTE')
+    entrega_estimada = models.DateField(blank=True, null=True)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     def __str__(self):
@@ -91,3 +92,26 @@ class DetallePedido(models.Model):
 
     def __str__(self):
         return f'{self.producto.nombre} - {self.cantidad}'
+
+
+class ListaDeseos(models.Model):
+    usuario = models.OneToOneField(User, on_delete=models.CASCADE, related_name='lista_deseos')
+    productos = models.ManyToManyField(Producto, related_name='en_listas_deseos')
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'Lista de deseos de {self.usuario.username}'
+
+
+class Review(models.Model):
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
+    producto = models.ForeignKey(Producto, on_delete=models.CASCADE, related_name='reviews')
+    rating = models.PositiveSmallIntegerField()
+    comentario = models.TextField(blank=True)
+    fecha = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f'Review {self.rating} - {self.producto.nombre} by {self.usuario.username}'

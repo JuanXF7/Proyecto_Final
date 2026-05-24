@@ -10,4 +10,6 @@ export interface Producto {
   promocion?: boolean;
   categoria?: number | { nombre?: string };
   proveedor?: number | { nombre?: string };
+  average_rating?: number | null;
+  reviews?: Array<{ id: number; usuario: { id: number; username?: string; email?: string }; rating: number; comentario?: string; fecha?: string }>;
 }

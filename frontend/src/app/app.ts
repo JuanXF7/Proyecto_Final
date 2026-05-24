@@ -52,6 +52,7 @@ export class App implements OnInit {
   protected readonly registerAddress = signal('');
   protected readonly authMessage = signal('');
   protected readonly currentUser = signal<{ email: string; nombre: string; profileId?: number | null; avatarUrl?: string } | null>(null);
+  protected readonly authToken = signal<string | null>(null);
   protected readonly profileId = signal<number | null>(null);
   protected readonly profileEmail = signal('');
   protected readonly profileName = signal('');
@@ -68,6 +69,22 @@ export class App implements OnInit {
   protected readonly dashboardTab = signal<'compras' | 'deseos' | 'carrito' | 'cuenta'>('compras');
   protected readonly showModal = signal(false);
   protected readonly selectedProduct = signal<Producto | null>(null);
+  protected readonly compras = signal<any[]>([]);
+  protected readonly listaDeseos = signal<any[]>([]);
+  protected readonly carrito = signal<{ producto: Producto; cantidad: number }[]>([]);
+  protected readonly pendingAction = signal<{ type: 'purchase' | 'addToCart' | 'wishlist'; product: Producto } | null>(null);
+  protected readonly productoEnListaDeseos = signal<{ [key: number]: boolean }>({});
+  protected readonly loadingCompras = signal(false);
+  protected readonly loadingDeseos = signal(false);
+  protected readonly showPurchaseModal = signal(false);
+  protected readonly purchaseQuantity = signal(1);
+  protected readonly purchaseMessage = signal('');
+  protected readonly purchaseLoading = signal(false);
+  protected readonly purchaseEstimatedDate = signal('');
+  protected readonly repurchaseMessage = signal<{ [key: number]: string }>({});
+  protected readonly reviewRating = signal<{ [key: number]: number }>({});
+  protected readonly reviewComment = signal<{ [key: number]: string }>({});
+  protected readonly reviewSubmitting = signal<{ [key: number]: boolean }>({});
   protected readonly currentUserAvatar = computed(() => this.currentUser()?.avatarUrl ?? '');
   protected readonly currentUserName = computed(() => this.currentUser()?.nombre ?? this.currentUser()?.email ?? '');
   protected readonly isLoggedIn = computed(() => !!this.currentUser());
@@ -112,8 +129,69 @@ export class App implements OnInit {
   constructor(private http: HttpClient) {}
 
   ngOnInit() {
+    this.restoreSessionFromStorage();
     this.loadMaxPrice();
     this.loadProducts();
+  }
+
+  private restoreSessionFromStorage() {
+    try {
+      const savedSession = localStorage.getItem('userSession');
+      if (savedSession) {
+        const userData = JSON.parse(savedSession);
+        this.setCurrentUserProfile(userData);
+        if (userData.token) {
+          this.authToken.set(userData.token);
+        }
+      }
+    } catch (error) {
+      console.error('Error al restaurar sesión:', error);
+      localStorage.removeItem('userSession');
+    }
+  }
+
+  private saveSessionToStorage(data: {
+    email: string;
+    nombre: string;
+    profileId?: number | null;
+    avatarUrl?: string | null;
+    nickname?: string;
+    telefono?: string;
+    direccion?: string;
+    ciudad?: string;
+  }) {
+    try {
+      localStorage.setItem('userSession', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error al guardar sesión:', error);
+    }
+  }
+
+  private saveAuthToken(token: string | null) {
+    try {
+      if (token) {
+        localStorage.setItem('authToken', token);
+        this.authToken.set(token);
+      } else {
+        localStorage.removeItem('authToken');
+        this.authToken.set(null);
+      }
+    } catch (e) {
+      console.error('Error saving auth token', e);
+    }
+  }
+
+  private getAuthHeader(): Record<string, string> {
+    const token = this.authToken() || localStorage.getItem('authToken');
+    return token ? { Authorization: `Token ${token}` } : {} as Record<string, string>;
+  }
+
+  private clearSessionFromStorage() {
+    try {
+      localStorage.removeItem('userSession');
+    } catch (error) {
+      console.error('Error al limpiar sesión:', error);
+    }
   }
 
   protected onFiltersChange(filters: FilterState) {
@@ -129,9 +207,25 @@ export class App implements OnInit {
     this.currentPage.set(page);
   }
 
+  private scrollDisabled = false;
+  private preventScroll = (e: Event) => {
+    e.preventDefault();
+  };
+
   protected updateBodyScroll() {
-    const isModalOpen = this.showModal() || this.showLogin();
+    const isModalOpen = this.showModal() || this.showLogin() || this.showPurchaseModal();
     document.body.classList.toggle('modal-open', isModalOpen);
+    document.documentElement.classList.toggle('modal-open', isModalOpen);
+
+    if (isModalOpen && !this.scrollDisabled) {
+      document.addEventListener('touchmove', this.preventScroll as EventListener, { passive: false } as AddEventListenerOptions);
+      document.addEventListener('wheel', this.preventScroll as EventListener, { passive: false } as AddEventListenerOptions);
+      this.scrollDisabled = true;
+    } else if (!isModalOpen && this.scrollDisabled) {
+      document.removeEventListener('touchmove', this.preventScroll as EventListener);
+      document.removeEventListener('wheel', this.preventScroll as EventListener);
+      this.scrollDisabled = false;
+    }
   }
 
   protected openLoginModal() {
@@ -161,6 +255,7 @@ export class App implements OnInit {
     telefono?: string;
     direccion?: string;
     ciudad?: string;
+    token?: string | null;
   }) {
     this.currentUser.set({
       email: data.email,
@@ -178,6 +273,21 @@ export class App implements OnInit {
     this.profileAvatarUrl.set(data.avatarUrl ?? '');
     this.profileAvatarPreview.set('');
     this.profileAvatarFile.set(null);
+
+    // Guardar sesión en localStorage y token antes de cargar datos protegidos
+    this.saveSessionToStorage(data);
+    if (data.token) {
+      this.saveAuthToken(data.token);
+      try {
+        const session = JSON.parse(localStorage.getItem('userSession') || '{}');
+        session.token = data.token;
+        localStorage.setItem('userSession', JSON.stringify(session));
+      } catch (e) {}
+    }
+
+    // Cargar compras y lista de deseos del usuario
+    this.loadUserCompras();
+    this.loadUserListaDeseos();
   }
 
   protected handleProfileImageChange(event: Event) {
@@ -292,7 +402,8 @@ export class App implements OnInit {
 
     this.http.put<{ id: number; email: string; nombre: string; nickname: string; telefono: string; direccion: string; ciudad: string; imagen?: string | null; }>(
       `${this.apiBase}/api/usuarios/${profileId}/`,
-      formData
+      formData,
+      { headers: { ...this.getAuthHeader(), 'X-CSRFToken': this.getCsrfToken() } }
     ).subscribe({
       next: (data) => {
         const imagenValue = data.imagen || '';
@@ -331,9 +442,10 @@ export class App implements OnInit {
         password: this.loginPassword(),
       };
 
-      this.http.post<{ email: string; nombre: string; profileId?: number; avatarUrl?: string; nickname?: string; telefono?: string; direccion?: string; ciudad?: string }>(
+      this.http.post<{ email: string; nombre: string; profileId?: number; avatarUrl?: string; nickname?: string; telefono?: string; direccion?: string; ciudad?: string; token?: string }>(
         `${this.apiBase}/api/login/`,
-        payload
+        payload,
+        { withCredentials: true }
       ).subscribe({
         next: (data) => {
           this.setCurrentUserProfile({
@@ -345,10 +457,16 @@ export class App implements OnInit {
             telefono: data.telefono,
             direccion: data.direccion,
             ciudad: data.ciudad,
+            token: data.token,
           });
           this.authMessage.set('Acceso exitoso.');
+          // Ejecutar acción pendiente si existe, si no llevar al panel
           this.closeLogin();
-          this.goToDashboard('compras');
+          if (this.pendingAction()) {
+            this.executePendingAction();
+          } else {
+            this.goToDashboard('compras');
+          }
         },
         error: (err) => {
           const message = err?.error?.detail || 'Credenciales inválidas.';
@@ -380,7 +498,7 @@ export class App implements OnInit {
       ciudad: this.registerCity(),
     };
 
-    this.http.post<{ email?: string; nombre?: string; profileId?: number; avatarUrl?: string; nickname?: string; telefono?: string; direccion?: string; ciudad?: string }>(`${this.apiBase}/api/register/`, payload).subscribe({
+    this.http.post<{ email?: string; nombre?: string; profileId?: number; avatarUrl?: string; nickname?: string; telefono?: string; direccion?: string; ciudad?: string; token?: string }>(`${this.apiBase}/api/register/`, payload).subscribe({
       next: (data) => {
         const userEmail = data?.email || payload.email;
         const userNombre = data?.nombre || payload.nombre;
@@ -390,6 +508,7 @@ export class App implements OnInit {
           nombre: userNombre,
           profileId: data?.profileId,
           avatarUrl: data?.avatarUrl,
+          token: data?.token,
           nickname: data?.nickname,
           telefono: data?.telefono,
           direccion: data?.direccion,
@@ -407,7 +526,11 @@ export class App implements OnInit {
         this.registerCity.set('');
         this.registerAddress.set('');
         this.closeLogin();
-        this.goToDashboard('compras');
+        if (this.pendingAction()) {
+          this.executePendingAction();
+        } else {
+          this.goToDashboard('compras');
+        }
       },
       error: (err) => {
         const message = err?.error?.detail || err?.error?.username?.[0] || err?.error?.email?.[0] || 'Error al registrar usuario.';
@@ -432,6 +555,13 @@ export class App implements OnInit {
     this.profileSaving.set(false);
     this.currentView.set('home');
     this.dashboardTab.set('compras');
+    this.compras.set([]);
+    this.listaDeseos.set([]);
+    this.productoEnListaDeseos.set({});
+    
+    // Limpiar sesión del localStorage
+    this.clearSessionFromStorage();
+    this.saveAuthToken(null);
   }
 
   protected goToDashboard(tab: 'compras' | 'deseos' | 'carrito' | 'cuenta' = 'compras') {
@@ -455,8 +585,214 @@ export class App implements OnInit {
   }
 
   protected addToCart(product: Producto) {
-    console.log('Agregar al carrito:', product);
-    // Aquí puedes enlazar con lógica real de carrito si la tienes disponible.
+    if (!this.isLoggedIn()) {
+      // Guardar la acción pendiente y pedir login
+      this.pendingAction.set({ type: 'addToCart', product });
+      this.closeModal();
+      this.openLoginModal();
+      return;
+    }
+
+    const existing = this.carrito().find((item) => item.producto.id === product.id);
+    if (existing) {
+      existing.cantidad += 1;
+      this.carrito.set([...this.carrito()]);
+    } else {
+      this.carrito.set([...this.carrito(), { producto: product, cantidad: 1 }]);
+    }
+  }
+
+  protected parsePrice(value: string | number) {
+    return typeof value === 'number' ? value : parseFloat(value.toString().replace(/[^0-9.-]+/g, ''));
+  }
+
+  protected startPurchase(product: Producto) {
+    if (!this.isLoggedIn()) {
+      this.pendingAction.set({ type: 'purchase', product });
+      this.closeModal();
+      this.openLoginModal();
+      return;
+    }
+
+    this.selectedProduct.set(product);
+    this.purchaseQuantity.set(1);
+    this.purchaseMessage.set('');
+    this.purchaseLoading.set(false);
+    this.purchaseEstimatedDate.set(this.generateRandomDeliveryDate());
+    this.showModal.set(false);
+    this.showPurchaseModal.set(true);
+    this.updateBodyScroll();
+  }
+
+  protected cancelPurchase() {
+    this.showPurchaseModal.set(false);
+    this.purchaseMessage.set('');
+    this.purchaseLoading.set(false);
+    this.updateBodyScroll();
+  }
+
+  protected changePurchaseQuantity(value: string) {
+    const quantity = Number(value);
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      this.purchaseQuantity.set(1);
+      return;
+    }
+    this.purchaseQuantity.set(quantity);
+  }
+
+  protected getPurchaseTotal() {
+    const product = this.selectedProduct();
+    const quantity = this.purchaseQuantity();
+    if (!product) {
+      return 0;
+    }
+    const price = typeof product.precio === 'string' ? parseFloat(product.precio) : Number(product.precio);
+    return Number.isFinite(price) ? price * quantity : 0;
+  }
+
+  protected formatCurrency(value: number) {
+    return value.toLocaleString('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 });
+  }
+
+  protected generateRandomDeliveryDate() {
+    const now = new Date();
+    const days = Math.floor(Math.random() * 30) + 1;
+    const delivery = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+    return delivery.toISOString().split('T')[0];
+  }
+
+  protected submitPurchase(event: Event) {
+    event.preventDefault();
+    const product = this.selectedProduct();
+    if (!product) {
+      this.purchaseMessage.set('No se encontró el producto.');
+      return;
+    }
+
+    const cantidad = this.purchaseQuantity();
+    if (cantidad < 1) {
+      this.purchaseMessage.set('Debes ingresar una cantidad válida.');
+      return;
+    }
+
+    this.purchaseLoading.set(true);
+    this.http.post<any>(`${this.apiBase}/api/pedidos/comprar/`, {
+      producto_id: product.id,
+      cantidad,
+    }, { headers: this.getAuthHeader() }).subscribe({
+      next: (data) => {
+        this.purchaseMessage.set('Compra realizada correctamente.');
+        this.showPurchaseModal.set(false);
+        this.updateBodyScroll();
+        this.selectedProduct.set(null);
+        this.loadProducts();
+        this.loadUserCompras();
+        this.goToDashboard('compras');
+      },
+      error: (err) => {
+        this.purchaseMessage.set(err?.error?.detail || 'Error al procesar la compra.');
+        console.error('Error compra:', err);
+      },
+      complete: () => {
+        this.purchaseLoading.set(false);
+      }
+    });
+  }
+
+  protected repurchase(productId: number) {
+    // Buscar el producto en el listado actual para conocer stock
+    const product = this.products().find((p) => p.id === productId);
+    if (!product || Number(product.stock) <= 0) {
+      const mapa = { ...(this.repurchaseMessage() || {}) };
+      mapa[productId] = 'Lo siento, se ha agotado el stock';
+      this.repurchaseMessage.set(mapa);
+      // Limpiar mensaje después de 3 segundos
+      setTimeout(() => {
+        const m = { ...(this.repurchaseMessage() || {}) };
+        delete m[productId];
+        this.repurchaseMessage.set(m);
+      }, 3000);
+      return;
+    }
+
+    // Si hay stock, iniciar compra como en el modal
+    this.startPurchase(product);
+  }
+
+  protected submitReview(productId: number) {
+    const rating = this.reviewRating()[productId] || 0;
+    const comentario = this.reviewComment()[productId] || '';
+
+    if (!rating || rating < 1 || rating > 5) {
+      const mapa = { ...(this.repurchaseMessage() || {}) };
+      mapa[productId] = 'Selecciona una calificación entre 1 y 5 estrellas.';
+      this.repurchaseMessage.set(mapa);
+      setTimeout(() => {
+        const m = { ...(this.repurchaseMessage() || {}) };
+        delete m[productId];
+        this.repurchaseMessage.set(m);
+      }, 3000);
+      return;
+    }
+
+    if (!this.isLoggedIn()) {
+      this.pendingAction.set({ type: 'purchase', product: this.products().find(p => p.id === productId)! });
+      this.openLoginModal();
+      return;
+    }
+
+    const headers = { ...this.getAuthHeader(), 'Content-Type': 'application/json' };
+    this.reviewSubmitting.set({ ...(this.reviewSubmitting() || {}), [productId]: true });
+    this.http.post<any>(`${this.apiBase}/api/reviews/`, { producto: productId, rating, comentario }, { headers }).subscribe({
+      next: (data) => {
+        // refresh product data so average_rating and reviews update
+        this.loadProducts();
+        this.loadUserCompras();
+        // clear inputs
+        const r = { ...(this.reviewRating() || {}) };
+        const c = { ...(this.reviewComment() || {}) };
+        delete r[productId];
+        delete c[productId];
+        this.reviewRating.set(r);
+        this.reviewComment.set(c);
+        this.repurchaseMessage.set({ ...(this.repurchaseMessage() || {}), [productId]: 'Gracias por tu valoración.' });
+        setTimeout(() => {
+          const m = { ...(this.repurchaseMessage() || {}) };
+          delete m[productId];
+          this.repurchaseMessage.set(m);
+        }, 2000);
+      },
+      error: (err) => {
+        console.error('Error al enviar reseña:', err);
+        this.repurchaseMessage.set({ ...(this.repurchaseMessage() || {}), [productId]: err?.error?.detail || 'Error al enviar reseña.' });
+      },
+      complete: () => {
+        this.reviewSubmitting.set({ ...(this.reviewSubmitting() || {}), [productId]: false });
+      }
+    });
+  }
+
+  protected setReviewRating(productId: number, rating: number) {
+    const map = { ...(this.reviewRating() || {}) };
+    map[productId] = rating;
+    this.reviewRating.set(map);
+  }
+
+  protected setReviewComment(productId: number, value: string) {
+    const map = { ...(this.reviewComment() || {}) };
+    map[productId] = value;
+    this.reviewComment.set(map);
+  }
+
+  protected marcarPedidoRecibido(pedidoId: number) {
+    this.http.post<any>(`${this.apiBase}/api/pedidos/${pedidoId}/recibido/`, {}, { headers: this.getAuthHeader() }).subscribe({
+      next: () => {
+        this.loadUserCompras();
+      },
+      error: (err) => {
+        console.error('Error al marcar pedido recibido:', err);
+      }
+    });
   }
 
   protected getProductImage(product: Producto) {
@@ -466,6 +802,20 @@ export class App implements OnInit {
     return product.imagen.startsWith('http')
       ? product.imagen
       : `${this.apiBase}${product.imagen}`;
+  }
+
+  protected getRemainingTime(dateString: string) {
+    if (!dateString) {
+      return '';
+    }
+    const today = new Date();
+    const target = new Date(dateString);
+    const diffMs = target.getTime() - today.getTime();
+    if (diffMs <= 0) {
+      return 'Hoy';
+    }
+    const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    return days === 1 ? '1 día restante' : `${days} días restantes`;
   }
 
   protected getProveedorName(product: Producto): string {
@@ -496,12 +846,136 @@ export class App implements OnInit {
   private loadProducts() {
     this.http.get<Producto[]>(`${this.apiBase}/api/productos/`).subscribe({
       next: (data) => {
-        this.products.set(data);
+        this.products.set(data.filter((product) => Number(product.stock) > 0));
         this.loading.set(false);
       },
       error: () => {
         this.products.set([]);
         this.loading.set(false);
+      }
+    });
+  }
+
+  private loadUserCompras() {
+    const authHeader = this.getAuthHeader();
+    if (!authHeader['Authorization']) {
+      this.compras.set([]);
+      this.loadingCompras.set(false);
+      return;
+    }
+
+    this.loadingCompras.set(true);
+    this.http.get<any[]>(`${this.apiBase}/api/pedidos/mis_compras/`, { headers: authHeader }).subscribe({
+      next: (data) => {
+        this.compras.set(data);
+      },
+      error: () => {
+        this.compras.set([]);
+        console.error('Error al cargar compras');
+      },
+      complete: () => {
+        this.loadingCompras.set(false);
+      }
+    });
+  }
+
+  private loadUserListaDeseos() {
+    const authHeader = this.getAuthHeader();
+    if (!authHeader['Authorization']) {
+      this.listaDeseos.set([]);
+      this.productoEnListaDeseos.set({});
+      this.loadingDeseos.set(false);
+      return;
+    }
+
+    this.loadingDeseos.set(true);
+    this.http.get<{ productos: Producto[] }>(`${this.apiBase}/api/lista-deseos/`, { headers: authHeader }).subscribe({
+      next: (data) => {
+        this.listaDeseos.set(data.productos || []);
+        const mapaDeseos: { [key: number]: boolean } = {};
+        (data.productos || []).forEach((p: Producto) => {
+          mapaDeseos[p.id] = true;
+        });
+        this.productoEnListaDeseos.set(mapaDeseos);
+      },
+      error: () => {
+        this.listaDeseos.set([]);
+        this.productoEnListaDeseos.set({});
+        console.error('Error al cargar lista de deseos');
+      },
+      complete: () => {
+        this.loadingDeseos.set(false);
+      }
+    });
+  }
+
+  protected agregarAListaDeseos(producto: Producto) {
+    if (!this.isLoggedIn()) {
+      this.pendingAction.set({ type: 'wishlist', product: producto });
+      this.closeModal();
+      this.openLoginModal();
+      return;
+    }
+
+    this.http.post(`${this.apiBase}/api/lista-deseos/`, { producto_id: producto.id }, { headers: { ...this.getAuthHeader(), 'X-CSRFToken': this.getCsrfToken() } }).subscribe({
+      next: (data: any) => {
+        const mapaDeseos: { [key: number]: boolean } = {};
+        (data.productos || []).forEach((p: Producto) => {
+          mapaDeseos[p.id] = true;
+        });
+        this.productoEnListaDeseos.set(mapaDeseos);
+        this.listaDeseos.set(data.productos || []);
+      },
+      error: (err) => {
+        console.error('Error al agregar a lista de deseos:', err);
+      }
+    });
+  }
+
+  protected executePendingAction() {
+    const action = this.pendingAction();
+    if (!action) return;
+    // Clear pending action before executing to avoid loops
+    this.pendingAction.set(null);
+
+    const { type, product } = action;
+    if (type === 'purchase') {
+      // open purchase modal for product
+      this.startPurchase(product);
+      return;
+    }
+
+    // For addToCart and wishlist: reopen product modal and then perform the action
+    this.selectedProduct.set(product);
+    this.showModal.set(true);
+    this.updateBodyScroll();
+
+    if (type === 'addToCart') {
+      this.addToCart(product);
+      return;
+    }
+
+    if (type === 'wishlist') {
+      this.agregarAListaDeseos(product);
+      return;
+    }
+  }
+
+  protected removerDeListaDeseos(productoId: number) {
+    this.http.delete(`${this.apiBase}/api/lista-deseos/remove/`, {
+      body: { producto_id: productoId },
+      headers: { ...this.getAuthHeader(), 'X-CSRFToken': this.getCsrfToken() }
+    }).subscribe({
+      next: (data: any) => {
+        const mapaDeseos: { [key: number]: boolean } = {};
+        (data.productos || []).forEach((p: Producto) => {
+          mapaDeseos[p.id] = true;
+        });
+        this.productoEnListaDeseos.set(mapaDeseos);
+        this.listaDeseos.set(data.productos || []);
+      },
+      error: (err) => {
+        console.error('Error al remover de lista de deseos:', err);
       }
     });
   }
@@ -512,5 +986,10 @@ export class App implements OnInit {
     }
     const normalized = parseFloat(price.toString().replace(/[^0-9.-]+/g, ''));
     return Number.isFinite(normalized) ? normalized : 0;
+  }
+
+  private getCsrfToken(): string {
+    const match = document.cookie.match(/(^|; )csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[2]) : '';
   }
 }

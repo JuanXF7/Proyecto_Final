@@ -9,7 +9,9 @@ router.register(r'proveedores', ProveedorViewSet)
 router.register(r'lugares-venta', LugarVentaViewSet)
 router.register(r'productos', ProductoViewSet)
 router.register(r'usuarios', PerfilUsuarioViewSet)
+router.register(r'reviews', ReviewViewSet)
 router.register(r'pedidos', PedidoViewSet)
+router.register(r'lista-deseos', ListaDeseosViewSet, basename='lista-deseos')
 
 urlpatterns = [
     path('login/', LoginUserView.as_view(), name='login'),
