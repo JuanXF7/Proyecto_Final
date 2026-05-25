@@ -30,13 +30,11 @@ class ProductoSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_average_rating(self, obj):
-        reviews = getattr(obj, 'reviews', None)
-        if reviews is None:
-            reviews = obj.reviews.all()
+        reviews = obj.reviews.all()
         count = reviews.count()
         if count == 0:
             return None
-        total = sum([r.rating for r in reviews])
+        total = sum(r.rating for r in reviews)
         return round(total / count, 2)
 
     def get_reviews(self, obj):
@@ -117,10 +115,11 @@ class UserRegistrationSerializer(serializers.Serializer):
 
 class ReviewSerializer(serializers.ModelSerializer):
     usuario = UserSerializer(read_only=True)
+    producto = serializers.PrimaryKeyRelatedField(queryset=Producto.objects.all())
 
     class Meta:
         model = Review
-        fields = ['id', 'usuario', 'rating', 'comentario', 'fecha']
+        fields = ['id', 'usuario', 'producto', 'rating', 'comentario', 'fecha']
         read_only_fields = ['usuario', 'fecha']
 
 

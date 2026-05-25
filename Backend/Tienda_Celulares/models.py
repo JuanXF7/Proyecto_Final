@@ -112,6 +112,9 @@ class Review(models.Model):
 
     class Meta:
         ordering = ['-fecha']
+        constraints = [
+            models.UniqueConstraint(fields=['usuario', 'producto'], name='unique_review_per_user_per_product')
+        ]
 
     def __str__(self):
         return f'Review {self.rating} - {self.producto.nombre} by {self.usuario.username}'

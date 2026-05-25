@@ -761,3 +761,14 @@ button.avatar-container,
   z-index: 1;
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(59, 130, 246, 0.06));
 }
+
+/* Ajuste: inputs del formulario de registro */
+.login-form .register-grid input {
+  height: 0.5rem !important;
+}
+
+/* También aplicar a los inputs de correo y contraseña del formulario de login/registro */
+.login-form input[type="email"],
+.login-form input[type="password"] {
+  height: 0.5rem !important;
+}

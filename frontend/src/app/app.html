@@ -53,24 +53,30 @@
                 <div class="compra-producto-precio">
                   <span class="precio">{{ formatCurrency(detalle.precio) }}</span>
                 </div>
-                <div class="compra-producto-actions">
-                  <button class="btn-primary" type="button" (click)="repurchase(detalle.producto.id)">Comprar otra vez</button>
-                  <div class="repurchase-msg" *ngIf="repurchaseMessage()[detalle.producto.id]">{{ repurchaseMessage()[detalle.producto.id] }}</div>
-                </div>
-                <div class="compra-producto-review">
-                  <label>Valora este producto:</label>
-                  <div class="stars">
-                    <button *ngFor="let s of [1,2,3,4,5]" type="button" class="star-btn" [class.active]="(reviewRating()[detalle.producto.id] || 0) >= s" (click)="setReviewRating(detalle.producto.id, s)">★</button>
-                  </div>
-                  <textarea [value]="reviewComment()[detalle.producto.id] || ''" (input)="setReviewComment(detalle.producto.id, $any($event.target).value)" placeholder="Deja un comentario (opcional)"></textarea>
-                  <button class="btn-secondary" type="button" (click)="submitReview(detalle.producto.id)" [disabled]="(reviewSubmitting()[detalle.producto.id] || false)">Enviar valoración</button>
-                </div>
               </div>
             </div>
             <div class="compra-total">
-              <strong>Total: {{ formatCurrency(pedido.total) }}</strong>
-              <p *ngIf="pedido.entrega_estimada">Entrega estimada: {{ pedido.entrega_estimada | date:'longDate' }}</p>
-              <p *ngIf="pedido.estado !== 'ENTREGADO' && pedido.entrega_estimada">Tiempo aproximado: {{ getRemainingTime(pedido.entrega_estimada) }}</p>
+              <div class="compra-total-actions">
+                <div *ngFor="let detalle of pedido.detalles" class="compra-total-action">
+                  <button class="btn-primary" type="button" (click)="repurchase(detalle.producto.id)">Comprar otra vez</button>
+                  <button
+                    *ngIf="pedido.estado === 'ENTREGADO'"
+                    class="btn-secondary"
+                    type="button"
+                    [disabled]="hasReviewedProduct(detalle.producto)"
+                    (click)="openReviewModal(detalle.producto)"
+                  >
+                    {{ hasReviewedProduct(detalle.producto) ? 'Producto ya calificado' : 'Calificar el producto' }}
+                  </button>
+                  <div class="review-msg" *ngIf="reviewMessage()[detalle.producto.id]">{{ reviewMessage()[detalle.producto.id] }}</div>
+                  <div class="repurchase-msg" *ngIf="repurchaseMessage()[detalle.producto.id]">{{ repurchaseMessage()[detalle.producto.id] }}</div>
+                </div>
+              </div>
+              <div class="compra-total-info">
+                <strong>Total: {{ formatCurrency(pedido.total) }}</strong>
+                <p *ngIf="pedido.entrega_estimada">Entrega estimada: {{ pedido.entrega_estimada | date:'longDate' }}</p>
+                <p *ngIf="pedido.estado !== 'ENTREGADO' && pedido.entrega_estimada">Tiempo aproximado: {{ getRemainingTime(pedido.entrega_estimada) }}</p>
+              </div>
             </div>
             <button *ngIf="pedido.estado !== 'ENTREGADO'" class="btn-primary" type="button" (click)="marcarPedidoRecibido(pedido.id)">Pedido recibido</button>
           </div>
@@ -360,7 +366,7 @@
   <div class="modal-backdrop" *ngIf="showModal()">
     <div class="modal">
       <ng-container *ngIf="selectedProduct() as product">
-        <div class="modal-content">
+        <div class="modal-content with-comments">
           <div class="modal-image">
             <img
               [src]="getProductImage(product)"
@@ -378,6 +384,22 @@
               <span>Precio: {{ product.precio | number:'1.0-0' }}</span>
               <span>Stock: {{ product.stock }}</span>
               <span>Proveedor: {{ getProveedorName(product) }}</span>
+            </div>
+
+            <div class="rating-summary">
+              <div class="rating-row">
+                <span>Valoración promedio:</span>
+                <span class="rating-value">
+                  <ng-container *ngIf="product.average_rating; else noProductRating">
+                    {{ product.average_rating | number:'1.1-1' }} / 5
+                  </ng-container>
+                  <ng-template #noProductRating>Sin calificación</ng-template>
+                </span>
+              </div>
+              <div class="rating-stars">
+                <button *ngFor="let s of [1,2,3,4,5]" type="button" class="star-btn" [class.active]="(product.average_rating || 0) >= s">★</button>
+              </div>
+              <span class="reviews-count">{{ product.reviews?.length || 0 }} comentarios</span>
             </div>
 
             <div class="modal-actions">
@@ -398,6 +420,18 @@
               <button class="modal-secondary" type="button" (click)="closeModal()">
                 Cerrar
               </button>
+            </div>
+          </div>
+
+          <div class="modal-comments">
+            <h3>Comentarios del producto</h3>
+            <div *ngIf="!product.reviews?.length" class="empty-comments">Aún no hay comentarios para este producto.</div>
+            <div *ngFor="let review of product.reviews" class="review-card">
+              <div class="review-meta">
+                <span>{{ review.usuario.username || review.usuario.email }}</span>
+                <span>{{ review.rating }} ★</span>
+              </div>
+              <p>{{ review.comentario || 'Sin comentario' }}</p>
             </div>
           </div>
         </div>
@@ -438,6 +472,52 @@
             </div>
 
             <p class="auth-message">{{ purchaseMessage() }}</p>
+          </div>
+        </div>
+      </ng-container>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="showReviewModal()">
+    <div class="modal review-modal">
+      <ng-container *ngIf="selectedReviewProduct() as product">
+        <div class="modal-content">
+          <div class="modal-image">
+            <img [src]="getProductImage(product)" [alt]="product.nombre" />
+          </div>
+
+          <div class="modal-details">
+            <span class="product-badge">Calificar producto</span>
+            <h2>{{ product.nombre }}</h2>
+            <p class="modal-subtitle">{{ product.marca }}</p>
+
+            <div class="modal-meta">
+              <span>
+                Valoración actual:
+                <ng-container *ngIf="product.average_rating; else noRating">
+                  {{ product.average_rating | number:'1.1-1' }} / 5
+                </ng-container>
+                <ng-template #noRating>Sin calificación</ng-template>
+              </span>
+              <span>Reseñas: {{ product.reviews?.length || 0 }}</span>
+            </div>
+
+            <div class="rating-form">
+              <label>Seleccione una calificación</label>
+              <div class="stars">
+                <button *ngFor="let s of [1,2,3,4,5]" type="button" class="star-btn" [class.active]="(reviewRating()[product.id] || 0) >= s" (click)="setReviewRating(product.id, s)">★</button>
+              </div>
+              <textarea class="fixed-comment-box" [value]="reviewComment()[product.id] || ''" (input)="setReviewComment(product.id, $any($event.target).value)" placeholder="Escribe un comentario sobre el producto"></textarea>
+            </div>
+
+            <div class="modal-actions">
+              <button class="btn-primary" type="button" (click)="submitReview(product.id)" [disabled]="reviewSubmitting()[product.id] || false">
+                {{ reviewSubmitting()[product.id] ? 'Enviando...' : 'Enviar valoración' }}
+              </button>
+              <button class="modal-secondary" type="button" (click)="closeReviewModal()">Cancelar</button>
+            </div>
+
+            <p class="auth-message">{{ reviewMessage()[product.id] }}</p>
           </div>
         </div>
       </ng-container>

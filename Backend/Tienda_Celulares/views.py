@@ -241,6 +241,10 @@ class ReviewViewSet(viewsets.ModelViewSet):
         if not has_bought:
             return Response({'detail': 'Solo los usuarios que compraron el producto pueden valorarlo.'}, status=status.HTTP_403_FORBIDDEN)
 
+        # Prevent duplicate reviews for the same user and product
+        if Review.objects.filter(usuario=request.user, producto=producto).exists():
+            return Response({'detail': 'Ya has calificado este producto.'}, status=status.HTTP_400_BAD_REQUEST)
+
         # Proceed to create review
         data = request.data.copy()
         data['producto'] = producto.id

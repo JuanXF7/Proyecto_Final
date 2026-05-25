@@ -72,7 +72,7 @@ export class App implements OnInit {
   protected readonly compras = signal<any[]>([]);
   protected readonly listaDeseos = signal<any[]>([]);
   protected readonly carrito = signal<{ producto: Producto; cantidad: number }[]>([]);
-  protected readonly pendingAction = signal<{ type: 'purchase' | 'addToCart' | 'wishlist'; product: Producto } | null>(null);
+  protected readonly pendingAction = signal<{ type: 'purchase' | 'addToCart' | 'wishlist' | 'review'; product: Producto } | null>(null);
   protected readonly productoEnListaDeseos = signal<{ [key: number]: boolean }>({});
   protected readonly loadingCompras = signal(false);
   protected readonly loadingDeseos = signal(false);
@@ -82,9 +82,12 @@ export class App implements OnInit {
   protected readonly purchaseLoading = signal(false);
   protected readonly purchaseEstimatedDate = signal('');
   protected readonly repurchaseMessage = signal<{ [key: number]: string }>({});
+  protected readonly showReviewModal = signal(false);
+  protected readonly selectedReviewProduct = signal<Producto | null>(null);
   protected readonly reviewRating = signal<{ [key: number]: number }>({});
   protected readonly reviewComment = signal<{ [key: number]: string }>({});
   protected readonly reviewSubmitting = signal<{ [key: number]: boolean }>({});
+  protected readonly reviewMessage = signal<{ [key: number]: string }>({});
   protected readonly currentUserAvatar = computed(() => this.currentUser()?.avatarUrl ?? '');
   protected readonly currentUserName = computed(() => this.currentUser()?.nombre ?? this.currentUser()?.email ?? '');
   protected readonly isLoggedIn = computed(() => !!this.currentUser());
@@ -213,7 +216,7 @@ export class App implements OnInit {
   };
 
   protected updateBodyScroll() {
-    const isModalOpen = this.showModal() || this.showLogin() || this.showPurchaseModal();
+    const isModalOpen = this.showModal() || this.showLogin() || this.showPurchaseModal() || this.showReviewModal();
     document.body.classList.toggle('modal-open', isModalOpen);
     document.documentElement.classList.toggle('modal-open', isModalOpen);
 
@@ -226,6 +229,27 @@ export class App implements OnInit {
       document.removeEventListener('wheel', this.preventScroll as EventListener);
       this.scrollDisabled = false;
     }
+  }
+
+  protected openReviewModal(product: Producto) {
+    this.selectedReviewProduct.set(product);
+    this.showReviewModal.set(true);
+    this.reviewMessage.set({ ...(this.reviewMessage() || {}), [product.id]: '' });
+    this.updateBodyScroll();
+  }
+
+  protected hasReviewedProduct(product: Producto) {
+    const user = this.currentUser();
+    if (!user || !product?.reviews?.length) {
+      return false;
+    }
+    return product.reviews.some((review) => review.usuario?.email === user.email);
+  }
+
+  protected closeReviewModal() {
+    this.showReviewModal.set(false);
+    this.selectedReviewProduct.set(null);
+    this.updateBodyScroll();
   }
 
   protected openLoginModal() {
@@ -724,19 +748,23 @@ export class App implements OnInit {
     const comentario = this.reviewComment()[productId] || '';
 
     if (!rating || rating < 1 || rating > 5) {
-      const mapa = { ...(this.repurchaseMessage() || {}) };
+      const mapa = { ...(this.reviewMessage() || {}) };
       mapa[productId] = 'Selecciona una calificación entre 1 y 5 estrellas.';
-      this.repurchaseMessage.set(mapa);
+      this.reviewMessage.set(mapa);
       setTimeout(() => {
-        const m = { ...(this.repurchaseMessage() || {}) };
+        const m = { ...(this.reviewMessage() || {}) };
         delete m[productId];
-        this.repurchaseMessage.set(m);
+        this.reviewMessage.set(m);
       }, 3000);
       return;
     }
 
     if (!this.isLoggedIn()) {
-      this.pendingAction.set({ type: 'purchase', product: this.products().find(p => p.id === productId)! });
+      const product = this.products().find((p) => p.id === productId);
+      if (product) {
+        this.pendingAction.set({ type: 'review', product });
+      }
+      this.closeReviewModal();
       this.openLoginModal();
       return;
     }
@@ -755,16 +783,18 @@ export class App implements OnInit {
         delete c[productId];
         this.reviewRating.set(r);
         this.reviewComment.set(c);
-        this.repurchaseMessage.set({ ...(this.repurchaseMessage() || {}), [productId]: 'Gracias por tu valoración.' });
+        const messageMap = { ...(this.reviewMessage() || {}) };
+        messageMap[productId] = 'Gracias por tu valoración.';
+        this.reviewMessage.set(messageMap);
         setTimeout(() => {
-          const m = { ...(this.repurchaseMessage() || {}) };
+          const m = { ...(this.reviewMessage() || {}) };
           delete m[productId];
-          this.repurchaseMessage.set(m);
+          this.reviewMessage.set(m);
         }, 2000);
       },
       error: (err) => {
         console.error('Error al enviar reseña:', err);
-        this.repurchaseMessage.set({ ...(this.repurchaseMessage() || {}), [productId]: err?.error?.detail || 'Error al enviar reseña.' });
+        this.reviewMessage.set({ ...(this.reviewMessage() || {}), [productId]: err?.error?.detail || 'Error al enviar reseña.' });
       },
       complete: () => {
         this.reviewSubmitting.set({ ...(this.reviewSubmitting() || {}), [productId]: false });
@@ -942,6 +972,11 @@ export class App implements OnInit {
     if (type === 'purchase') {
       // open purchase modal for product
       this.startPurchase(product);
+      return;
+    }
+
+    if (type === 'review') {
+      this.openReviewModal(product);
       return;
     }
 
