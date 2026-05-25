@@ -8,6 +8,7 @@ export interface Producto {
   marca: string;
   tipo: string;
   promocion?: boolean;
+  descuento?: number;
   categoria?: number | { nombre?: string };
   proveedor?: number | { nombre?: string };
   average_rating?: number | null;

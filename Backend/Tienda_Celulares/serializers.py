@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import *
@@ -24,6 +25,7 @@ class LugarVentaSerializer(serializers.ModelSerializer):
 class ProductoSerializer(serializers.ModelSerializer):
     average_rating = serializers.SerializerMethodField(read_only=True)
     reviews = serializers.SerializerMethodField(read_only=True)
+    discounted_price = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Producto
@@ -40,6 +42,12 @@ class ProductoSerializer(serializers.ModelSerializer):
     def get_reviews(self, obj):
         reviews = obj.reviews.all().order_by('-fecha')[:10]
         return ReviewSerializer(reviews, many=True).data
+
+    def get_discounted_price(self, obj):
+        if obj.promocion and obj.descuento and obj.descuento > 0:
+            discounted = obj.precio * (Decimal(100 - obj.descuento) / Decimal(100))
+            return round(discounted, 2)
+        return None
 
 
 class PerfilUsuarioSerializer(serializers.ModelSerializer):

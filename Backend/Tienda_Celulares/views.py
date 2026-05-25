@@ -10,6 +10,7 @@ from django.contrib.auth import login
 from rest_framework.authtoken.models import Token
 from django.contrib.auth.models import User
 from django.db.models import Max
+from decimal import Decimal
 from django.utils import timezone
 from datetime import timedelta
 import random
@@ -171,7 +172,12 @@ class PedidoViewSet(viewsets.ModelViewSet):
         if producto.stock < cantidad:
             return Response({'detail': 'No hay suficiente stock disponible.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        total = producto.precio * cantidad
+        price = producto.precio
+        discounted_price = price
+        if producto.promocion and producto.descuento and producto.descuento > 0:
+            discounted_price = price * (Decimal(100 - producto.descuento) / Decimal(100))
+
+        total = discounted_price * cantidad
         entrega_estimada = timezone.now().date() + timedelta(days=random.randint(1, 30))
 
         pedido = Pedido.objects.create(
@@ -184,7 +190,7 @@ class PedidoViewSet(viewsets.ModelViewSet):
             pedido=pedido,
             producto=producto,
             cantidad=cantidad,
-            precio=producto.precio,
+            precio=discounted_price,
         )
 
         producto.stock = max(producto.stock - cantidad, 0)

@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output } from '@angular/core';
+import { Component, EventEmitter, Input, Output, OnChanges, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 export interface ProductFilters {
@@ -16,7 +16,17 @@ export interface ProductFilters {
   template: `
     <aside class="filters">
       <h2>Filtrar por</h2>
-      <p>Encuentra rápido por marca, tipo, precio y promociones.</p>
+      <div class="search-box">
+        <input
+          type="search"
+          [value]="searchQuery"
+          placeholder="Buscar"
+          aria-label="Buscar productos"
+          (input)="onSearchInput($any($event.target).value)"
+          (keyup.enter)="submitSearch()"
+        />
+        <button type="button" (click)="submitSearch()">Buscar</button>
+      </div>
 
       <div class="filter-group filter-row">
         <label>
@@ -107,10 +117,22 @@ export class FiltersComponent {
   @Input() selectedMinPrice = 0;
   @Input() selectedMaxPrice = 99999999;
   @Input() promotionsOnly = false;
+  @Input() searchTerm = '';
 
   @Output() filtersChange = new EventEmitter<ProductFilters>();
+  @Output() searchChange = new EventEmitter<string>();
+
+  protected searchQuery = '';
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['searchTerm'] && changes['searchTerm'].currentValue !== undefined) {
+      this.searchQuery = changes['searchTerm'].currentValue;
+    }
+  }
 
   protected resetFilters() {
+    this.searchQuery = '';
+    this.searchChange.emit('');
     this.filtersChange.emit({
       brand: '',
       type: '',
@@ -148,5 +170,13 @@ export class FiltersComponent {
     }
 
     this.filtersChange.emit(filters);
+  }
+
+  protected onSearchInput(value: string) {
+    this.searchQuery = value;
+  }
+
+  protected submitSearch() {
+    this.searchChange.emit(this.searchQuery.trim());
   }
 }

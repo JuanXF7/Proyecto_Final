@@ -18,14 +18,6 @@ import { CommonModule } from '@angular/common';
       </div>
 
       <div class="top-actions">
-        <div class="search-box">
-          <input
-            type="search"
-            placeholder="Buscar celular, marca o modelo"
-            aria-label="Buscar productos"
-          />
-          <button>Buscar</button>
-        </div>
         <button
           *ngIf="!loggedIn"
           class="btn-secondary"
@@ -45,7 +37,7 @@ import { CommonModule } from '@angular/common';
           <img *ngIf="userAvatar" [src]="userAvatar" alt="Avatar" class="avatar-circle" />
           <span *ngIf="!userAvatar" class="avatar-circle avatar-icon">👤</span>
         </button>
-        <button class="btn-primary">Ofertas exclusivas</button>
+        <button class="btn-primary" type="button" [class.active]="offersActive" (click)="toggleOffers.emit()">Ofertas exclusivas</button>
       </div>
     </header>
   `
@@ -54,7 +46,9 @@ export class HeaderComponent {
   @Input() loggedIn = false;
   @Input() userAvatar?: string;
   @Input() username?: string;
+  @Input() offersActive = false;
   @Output() login = new EventEmitter<void>();
   @Output() logout = new EventEmitter<void>();
   @Output() account = new EventEmitter<void>();
+  @Output() toggleOffers = new EventEmitter<void>();
 }

@@ -31,6 +31,7 @@ export class App implements OnInit {
   protected readonly brandFilter = signal('');
   protected readonly typeFilter = signal('');
   protected readonly promotionsOnly = signal(false);
+  protected readonly searchTerm = signal('');
   protected readonly priceRangeMin = 0;
   protected readonly priceRangeMax = signal(99999999);
   protected readonly priceMinFilter = signal(this.priceRangeMin);
@@ -72,8 +73,11 @@ export class App implements OnInit {
   protected readonly compras = signal<any[]>([]);
   protected readonly listaDeseos = signal<any[]>([]);
   protected readonly carrito = signal<{ producto: Producto; cantidad: number }[]>([]);
-  protected readonly pendingAction = signal<{ type: 'purchase' | 'addToCart' | 'wishlist' | 'review'; product: Producto } | null>(null);
+  protected readonly pendingAction = signal<{ type: 'purchase' | 'addToCart' | 'wishlist' | 'review' | 'purchaseCart'; product?: Producto } | null>(null);
   protected readonly productoEnListaDeseos = signal<{ [key: number]: boolean }>({});
+  protected readonly selectedCartItems = signal<{ [key: number]: boolean }>({});
+  protected readonly cartPurchaseMessage = signal('');
+  protected readonly cartPurchaseLoading = signal(false);
   protected readonly loadingCompras = signal(false);
   protected readonly loadingDeseos = signal(false);
   protected readonly showPurchaseModal = signal(false);
@@ -115,8 +119,12 @@ export class App implements OnInit {
       const matchesType = !this.typeFilter() || product.tipo === this.typeFilter();
       const matchesPrice = price >= min && price <= max;
       const matchesPromotion = !this.promotionsOnly() || !!product.promocion;
+      const search = this.searchTerm().trim().toLowerCase();
+      const matchesSearch = !search || [product.nombre, product.marca, product.tipo, product.descripcion]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(search));
 
-      return matchesBrand && matchesType && matchesPrice && matchesPromotion;
+      return matchesBrand && matchesType && matchesPrice && matchesPromotion && matchesSearch;
     });
   });
 
@@ -203,6 +211,16 @@ export class App implements OnInit {
     this.promotionsOnly.set(filters.promotionsOnly);
     this.priceMinFilter.set(filters.minPrice);
     this.priceMaxFilter.set(filters.maxPrice);
+    this.currentPage.set(1);
+  }
+
+  protected togglePromotionsOnly() {
+    this.promotionsOnly.set(!this.promotionsOnly());
+    this.currentPage.set(1);
+  }
+
+  protected setSearch(search: string) {
+    this.searchTerm.set(search);
     this.currentPage.set(1);
   }
 
@@ -626,6 +644,115 @@ export class App implements OnInit {
     }
   }
 
+  protected toggleCartItemSelection(productId: number) {
+    const map = { ...(this.selectedCartItems() || {}) };
+    map[productId] = !map[productId];
+    this.selectedCartItems.set(map);
+  }
+
+  protected toggleSelectAllCartItems(select: boolean) {
+    const selections: { [key: number]: boolean } = {};
+    this.carrito().forEach((item) => {
+      selections[item.producto.id] = select;
+    });
+    this.selectedCartItems.set(selections);
+  }
+
+  protected changeCartQuantity(productId: number, value: string) {
+    const quantity = Number(value);
+    if (!Number.isFinite(quantity) || quantity < 1) {
+      return;
+    }
+
+    const cart = this.carrito().map((item) => {
+      if (item.producto.id === productId) {
+        return { ...item, cantidad: quantity };
+      }
+      return item;
+    });
+    this.carrito.set(cart);
+  }
+
+  protected removeFromCart(productId: number) {
+    this.carrito.set(this.carrito().filter((item) => item.producto.id !== productId));
+    const selections = { ...(this.selectedCartItems() || {}) };
+    delete selections[productId];
+    this.selectedCartItems.set(selections);
+  }
+
+  protected getSelectedCartItems() {
+    return this.carrito().filter((item) => this.selectedCartItems()[item.producto.id]);
+  }
+
+  protected getCartSelectedTotal() {
+    return this.getSelectedCartItems().reduce((total, item) => {
+      return total + this.getDiscountedPrice(item.producto) * item.cantidad;
+    }, 0);
+  }
+
+  protected getCartSelectionCount() {
+    return this.getSelectedCartItems().length;
+  }
+
+  protected getCartSelectedAll() {
+    return this.carrito().length > 0 && this.carrito().every((item) => this.selectedCartItems()[item.producto.id]);
+  }
+
+  protected purchaseSelectedCartItems() {
+    const selected = this.getSelectedCartItems();
+    if (selected.length === 0) {
+      this.cartPurchaseMessage.set('Selecciona al menos un artículo para comprar.');
+      return;
+    }
+
+    if (!this.isLoggedIn()) {
+      this.pendingAction.set({ type: 'purchaseCart' });
+      this.openLoginModal();
+      return;
+    }
+
+    this.cartPurchaseMessage.set('');
+    this.cartPurchaseLoading.set(true);
+    let completed = 0;
+    let errors: string[] = [];
+
+    const finalize = () => {
+      this.cartPurchaseLoading.set(false);
+      this.loadProducts();
+      this.loadUserCompras();
+      if (errors.length > 0) {
+        this.cartPurchaseMessage.set(errors.join(' '));
+      } else {
+        this.cartPurchaseMessage.set('Compra realizada correctamente.');
+      }
+    };
+
+    selected.forEach((item) => {
+      this.http.post<any>(`${this.apiBase}/api/pedidos/comprar/`, {
+        producto_id: item.producto.id,
+        cantidad: item.cantidad,
+      }, { headers: this.getAuthHeader() }).subscribe({
+        next: () => {
+          this.removeFromCart(item.producto.id);
+        },
+        error: (err) => {
+          const detail = err?.error?.detail || 'Error al procesar la compra para ' + item.producto.nombre + '.';
+          errors.push(detail);
+        },
+        complete: () => {
+          completed += 1;
+          if (completed === selected.length) {
+            finalize();
+          }
+        }
+      });
+    });
+  }
+
+  protected isProductInCart(productId: number) {
+    return this.carrito().some((item) => item.producto.id === productId);
+  }
+
   protected parsePrice(value: string | number) {
     return typeof value === 'number' ? value : parseFloat(value.toString().replace(/[^0-9.-]+/g, ''));
   }
@@ -661,7 +788,30 @@ export class App implements OnInit {
       this.purchaseQuantity.set(1);
       return;
     }
+    const product = this.selectedProduct();
+    if (product) {
+      const maxStock = Number(product.stock) || 0;
+      if (maxStock <= 0) {
+        this.purchaseQuantity.set(1);
+        this.purchaseMessage.set('Lo siento, no hay stock disponible.');
+        return;
+      }
+      if (quantity > maxStock) {
+        this.purchaseQuantity.set(maxStock);
+        this.purchaseMessage.set(`La cantidad se ajustó al stock disponible (${maxStock}).`);
+        setTimeout(() => this.purchaseMessage.set(''), 2500);
+        return;
+      }
+    }
     this.purchaseQuantity.set(quantity);
+  }
+
+  protected getDiscountedPrice(product: Producto) {
+    const price = typeof product.precio === 'string' ? parseFloat(product.precio) : Number(product.precio);
+    if (product.promocion && product.descuento && product.descuento > 0) {
+      return price * (1 - product.descuento / 100);
+    }
+    return price;
   }
 
   protected getPurchaseTotal() {
@@ -670,7 +820,7 @@ export class App implements OnInit {
     if (!product) {
       return 0;
     }
-    const price = typeof product.precio === 'string' ? parseFloat(product.precio) : Number(product.precio);
+    const price = this.getDiscountedPrice(product);
     return Number.isFinite(price) ? price * quantity : 0;
   }
 
@@ -776,6 +926,8 @@ export class App implements OnInit {
         // refresh product data so average_rating and reviews update
         this.loadProducts();
         this.loadUserCompras();
+        // Close the review modal so the user can't write another comment immediately
+        this.closeReviewModal();
         // clear inputs
         const r = { ...(this.reviewRating() || {}) };
         const c = { ...(this.reviewComment() || {}) };
@@ -971,26 +1123,33 @@ export class App implements OnInit {
     const { type, product } = action;
     if (type === 'purchase') {
       // open purchase modal for product
-      this.startPurchase(product);
+      this.startPurchase(product as Producto);
       return;
     }
 
     if (type === 'review') {
-      this.openReviewModal(product);
+      this.openReviewModal(product as Producto);
+      return;
+    }
+
+    if (type === 'purchaseCart') {
+      this.purchaseSelectedCartItems();
       return;
     }
 
     // For addToCart and wishlist: reopen product modal and then perform the action
-    this.selectedProduct.set(product);
-    this.showModal.set(true);
-    this.updateBodyScroll();
+    if (product) {
+      this.selectedProduct.set(product);
+      this.showModal.set(true);
+      this.updateBodyScroll();
+    }
 
-    if (type === 'addToCart') {
+    if (type === 'addToCart' && product) {
       this.addToCart(product);
       return;
     }
 
-    if (type === 'wishlist') {
+    if (type === 'wishlist' && product) {
       this.agregarAListaDeseos(product);
       return;
     }

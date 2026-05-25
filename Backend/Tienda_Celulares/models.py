@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import MaxValueValidator, MinValueValidator
 
 class Categoria(models.Model):
     nombre = models.CharField(max_length=100)
@@ -45,6 +46,12 @@ class Producto(models.Model):
     categoria = models.ForeignKey(Categoria, on_delete=models.CASCADE)
     proveedor = models.ForeignKey(Proveedor, on_delete=models.CASCADE)
     lugar_venta = models.ForeignKey(LugarVenta, on_delete=models.CASCADE)
+    promocion = models.BooleanField(default=False)
+    descuento = models.PositiveIntegerField(
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Porcentaje de descuento aplicado cuando el producto está en oferta.'
+    )
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

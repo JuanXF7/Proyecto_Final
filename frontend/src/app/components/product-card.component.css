@@ -54,6 +54,24 @@
   min-height: 3.2rem;
 }
 
+.price-block {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.product-price-old {
+  text-decoration: line-through;
+  color: #64748b;
+  font-size: 0.95rem;
+}
+
+.discounted-price {
+  color: #2563eb;
+  font-weight: 800;
+}
+
 .buy-btn {
   min-width: 120px;
   min-height: 42px;

@@ -158,6 +158,14 @@ body.modal-open {
   cursor: pointer;
 }
 
+.filters .search-box {
+  width: 98%;
+}
+
+.filters .search-box input {
+  min-width: 0;
+}
+
 .hero {
   margin-top: 1.75rem;
   display: grid;
@@ -323,6 +331,9 @@ body.modal-open {
 .filters {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(37, 99, 235, 0.12);
+  position: sticky;
+  top: 1.25rem;
+  align-self: start;
 }
 
 .filters h2,
@@ -771,4 +782,12 @@ button.avatar-container,
 .login-form input[type="email"],
 .login-form input[type="password"] {
   height: 0.5rem !important;
+}
+
+/* Reducir altura de botones de auth: iniciar sesión, registrarse, crear cuenta y acceder */
+.login-form button,
+.login-tabs button,
+.login-form .modal-actions button {
+  padding: 0.45rem 1rem !important;
+  min-height: 2rem;
 }

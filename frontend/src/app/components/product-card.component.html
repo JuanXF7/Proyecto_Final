@@ -12,7 +12,17 @@
     <h3>{{ product.nombre }}</h3>
     <p>{{ product.marca }}</p>
     <div class="card-footer">
-      <span class="price">{{ product.precio | number:'1.0-0' }}</span>
+      <div class="price-block">
+        <span *ngIf="product.promocion && (product.descuento ?? 0) > 0" class="price product-price-old">
+          {{ product.precio | number:'1.0-0' }}
+        </span>
+        <span *ngIf="product.promocion && (product.descuento ?? 0) > 0" class="discounted-price">
+          {{ getDiscountedPrice(product) | number:'1.0-0' }}
+        </span>
+        <span *ngIf="!product.promocion || (product.descuento ?? 0) === 0" class="price">
+          {{ product.precio | number:'1.0-0' }}
+        </span>
+      </div>
       <button class="buy-btn" type="button" (click)="viewProduct.emit(product)">Ver producto</button>
     </div>
   </div>
